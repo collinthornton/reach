@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from libreach_core import YAMLNode, Path, runReachStudy
+from reach_core.reach_core_python import YAMLNode, Path, runReachStudy
 import argparse
 
 parser = argparse.ArgumentParser(prog="RunReachStudy", description="Wraps the reach study library in Python")

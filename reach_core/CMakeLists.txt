@@ -5,6 +5,7 @@ find_package(ros_industrial_cmake_boilerplate REQUIRED)
 extract_package_metadata(pkg)
 project(${pkg_extracted_name} VERSION ${pkg_extracted_version} LANGUAGES CXX)
 
+find_package(Python COMPONENTS Interpreter Development)
 find_package(PythonLibs 3.8 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS serialization program_options python)
 find_package(Eigen3 REQUIRED)
@@ -39,14 +40,32 @@ target_link_libraries(
   ${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
          Boost::serialization
+         ${PCL_LIBRARIES}
+         yaml-cpp
+         boost_plugin_loader::boost_plugin_loader
+         OpenMP::OpenMP_CXX)
+target_compile_definitions(${PROJECT_NAME} PUBLIC SEARCH_LIBRARIES_ENV="REACH_PLUGINS")
+target_cxx_version(${PROJECT_NAME} PUBLIC VERSION 14)
+
+# Add Python libraries
+Python_add_library(${PROJECT_NAME}_python MODULE src/python/python_bindings.cpp)
+target_include_directories(${PROJECT_NAME}_python PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+                                                  "$<INSTALL_INTERFACE:include>")
+target_include_directories(${PROJECT_NAME}_python PUBLIC ${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(
+  ${PROJECT_NAME}_python
+  PUBLIC ${PROJECT_NAME}
+         Eigen3::Eigen
+         Boost::serialization
          Boost::python
          ${PCL_LIBRARIES}
          ${PYTHON_LIBRARIES}
          yaml-cpp
          boost_plugin_loader::boost_plugin_loader
          OpenMP::OpenMP_CXX)
-target_compile_definitions(${PROJECT_NAME} PUBLIC SEARCH_LIBRARIES_ENV="REACH_PLUGINS")
-target_cxx_version(${PROJECT_NAME} PUBLIC VERSION 14)
+set_target_properties(${PROJECT_NAME}_python
+  PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/lib/python3/dist-packages/${PROJECT_NAME})
+
 
 # Plugins Library
 add_library(
@@ -99,4 +118,4 @@ configure_package(
     yaml-cpp
     boost_plugin_loader
     OpenMP
-  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_plugins ${PROJECT_NAME}_app ${PROJECT_NAME}_data_loader)
+  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_python ${PROJECT_NAME}_plugins ${PROJECT_NAME}_app ${PROJECT_NAME}_data_loader)
