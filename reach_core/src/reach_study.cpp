@@ -18,6 +18,7 @@
 #include <reach_core/plugin_utils.h>
 
 #include <boost/filesystem.hpp>
+#include <boost/python.hpp>
 #include <boost_plugin_loader/plugin_loader.hpp>
 #include <numeric>
 #include <thread>
@@ -319,4 +320,11 @@ void runReachStudy(const YAML::Node& config, const std::string& config_name, con
   }
 }
 
+BOOST_PYTHON_MODULE(libreach_core)
+{
+  boost::python::class_<YAML::Node>("YAMLNode").def("LoadFile", &YAML::LoadFile);
+
+  boost::python::class_<boost::filesystem::path>("Path", boost::python::init<std::string>());
+  boost::python::def("runReachStudy", runReachStudy);
+}
 }  // namespace reach

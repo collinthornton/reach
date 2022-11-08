@@ -5,7 +5,8 @@ find_package(ros_industrial_cmake_boilerplate REQUIRED)
 extract_package_metadata(pkg)
 project(${pkg_extracted_name} VERSION ${pkg_extracted_version} LANGUAGES CXX)
 
-find_package(Boost REQUIRED COMPONENTS serialization program_options)
+find_package(PythonLibs 3.8 REQUIRED)
+find_package(Boost REQUIRED COMPONENTS serialization program_options python)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS io search)
 find_package(yaml-cpp REQUIRED)
@@ -33,12 +34,14 @@ add_library(
   src/reach_study_comparison.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
                                                   "$<INSTALL_INTERFACE:include>")
-target_include_directories(${PROJECT_NAME} PUBLIC ${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PUBLIC ${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
 target_link_libraries(
   ${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
          Boost::serialization
+         Boost::python
          ${PCL_LIBRARIES}
+         ${PYTHON_LIBRARIES}
          yaml-cpp
          boost_plugin_loader::boost_plugin_loader
          OpenMP::OpenMP_CXX)
@@ -90,7 +93,7 @@ install(DIRECTORY include/${PROJECT_NAME}/ DESTINATION include/${PROJECT_NAME})
 configure_package(
   NAMESPACE reach
   DEPENDENCIES
-    "Boost REQUIRED COMPONENTS serialization program_options"
+    "Boost REQUIRED COMPONENTS serialization program_options python"
     "PCL REQUIRED COMPONENTS io search"
     Eigen3
     yaml-cpp
