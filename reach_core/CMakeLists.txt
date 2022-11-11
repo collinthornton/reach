@@ -7,7 +7,7 @@ project(${pkg_extracted_name} VERSION ${pkg_extracted_version} LANGUAGES CXX)
 
 find_package(Python COMPONENTS Interpreter Development)
 find_package(PythonLibs 3.8 REQUIRED)
-find_package(Boost REQUIRED COMPONENTS serialization program_options python)
+find_package(Boost REQUIRED COMPONENTS serialization program_options python numpy)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS io search)
 find_package(yaml-cpp REQUIRED)
@@ -58,6 +58,7 @@ target_link_libraries(
          Eigen3::Eigen
          Boost::serialization
          Boost::python
+         Boost::numpy
          ${PCL_LIBRARIES}
          ${PYTHON_LIBRARIES}
          yaml-cpp

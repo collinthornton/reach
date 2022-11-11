@@ -16,6 +16,9 @@
 #include <reach_core/reach_study.h>
 
 #include <boost/python.hpp>
+#include <boost/python/converter/builtin_converters.hpp>
+#include <boost/python/numpy.hpp>
+#include <mutex>
 #include <yaml-cpp/yaml.h>
 
 namespace bp = boost::python;
@@ -26,36 +29,66 @@ struct IKSolverWrap : IKSolver, bp::wrapper<IKSolver>
 {
   std::vector<std::string> getJointNames() const
   {
-    return this->get_override("getJointNames")();
+    std::vector<std::string> names;
+    bp::list name_list = this->get_override("getJointNames")();
+
+    for (int i = 0; i < bp::len(name_list); ++i)
+    {
+      std::string name = bp::extract<std::string>(name_list[i]);
+      names.push_back(name);
+    }
+    return names;
   }
 
-  std::vector<std::vector<double>> solveIK(const Eigen::Isometry3d&, const std::map<std::string, double>&) const
+  std::vector<std::vector<double>> solveIK(const Eigen::Isometry3d& target,
+                                           const std::map<std::string, double>& seed) const
   {
-    return this->get_override("solveIK")();
-  }
-};
+    bp::tuple shape = bp::make_tuple(4, 4);
+    bp::numpy::dtype dtype = bp::numpy::dtype::get_builtin<double>();
+    bp::numpy::ndarray array = bp::numpy::zeros(shape, dtype);
 
-struct IKSolverFactoryWrap : IKSolverFactory, bp::wrapper<IKSolverFactory>
-{
-  IKSolver::ConstPtr create(const YAML::Node&) const
-  {
-    return this->get_override("create")();
+    for (int i = 0; i < 4; ++i)
+    {
+      for (int j = 0; j < 4; ++j)
+      {
+        array[i, j] = target.matrix()(i, j);
+      }
+    }
+
+    bp::dict dictionary;
+    for (auto pair : seed)
+    {
+      dictionary[pair.first] = pair.second;
+    }
+
+    bp::list list = this->get_override("solveIK")(array, dictionary);
+
+    std::vector<std::vector<double>> output;
+
+    for (int i = 0; i < bp::len(list); ++i)
+    {
+      std::vector<double> sub_vec;
+      bp::list sub_list = bp::extract<bp::list>(list[i]);
+      for (int j = 0; j < bp::len(sub_list); ++j)
+      {
+        sub_vec.push_back(bp::extract<double>(sub_list[j]));
+      }
+      output.push_back(sub_vec);
+    }
+    return output;
   }
 };
 
 struct EvaluatorWrap : Evaluator, bp::wrapper<Evaluator>
 {
-  double calculateScore(const std::map<std::string, double>&) const
+  double calculateScore(const std::map<std::string, double>& map) const
   {
-    return this->get_override("calculateScore")();
-  }
-};
-
-struct EvaluatorFactoryWrap : EvaluatorFactory, bp::wrapper<EvaluatorFactory>
-{
-  Evaluator::ConstPtr create(const YAML::Node&) const
-  {
-    return this->get_override("create")();
+    bp::dict dictionary;
+    for (auto pair : map)
+    {
+      dictionary[pair.first] = pair.second;
+    }
+    return this->get_override("calculateScore")(dictionary);
   }
 };
 
@@ -63,15 +96,28 @@ struct TargetPoseGeneratorWrap : TargetPoseGenerator, bp::wrapper<TargetPoseGene
 {
   VectorIsometry3d generate() const
   {
-    return this->get_override("generate")();
-  }
-};
+    VectorIsometry3d eigen_list;
 
-struct TargetPoseGeneratorFactoryWrap : TargetPoseGeneratorFactory, bp::wrapper<TargetPoseGeneratorFactory>
-{
-  TargetPoseGenerator::ConstPtr create(const YAML::Node&) const
-  {
-    return this->get_override("create")();
+    bp::list np_list = this->get_override("generate")();
+
+    // Convert the list of 4x4 numpy arrays to VectorIsometry3d
+    for (int i = 0; i < bp::len(np_list); ++i)
+    {
+      Eigen::Isometry3d eigen_mat;
+      bp::tuple tuple = bp::extract<bp::tuple>(np_list[i]);
+
+      for (int j = 0; j < 4; ++j)
+      {
+        bp::tuple row_tuple = bp::extract<bp::tuple>(tuple[j]);
+        for (int k = 0; k < 4; ++k)
+        {
+          eigen_mat.matrix()(j, k) = bp::extract<double>(row_tuple[k]);
+        }
+      }
+      eigen_list.push_back(eigen_mat);
+    }
+
+    return eigen_list;
   }
 };
 
@@ -82,63 +128,56 @@ struct DisplayWrap : Display, bp::wrapper<Display>
     this->get_override("showEnvironment")();
   }
 
-  void updateRobotPose(const std::map<std::string, double>&) const
+  void updateRobotPose(const std::map<std::string, double>& map) const
   {
-    this->get_override("updateRobotPose")();
+    bp::dict dictionary;
+    for (auto pair : map)
+    {
+      dictionary[pair.first] = pair.second;
+    }
+
+    this->get_override("updateRobotPose")(dictionary);
   }
 
-  void showReachNeighborhood(const std::vector<ReachRecord>&) const
+  void showReachNeighborhood(const std::vector<ReachRecord>& neighborhood) const
   {
-    this->get_override("showReachNeighborhood")();
+    this->get_override("showReachNeighborhood")(neighborhood);
   }
 
-  void showResults(const ReachDatabase&) const
+  void showResults(const ReachDatabase& results) const
   {
-    this->get_override("showResults")();
-  }
-};
-
-struct DisplayFactoryWrap : DisplayFactory, bp::wrapper<DisplayFactory>
-{
-  Display::ConstPtr create(const YAML::Node&) const
-  {
-    return this->get_override("create")();
+    this->get_override("showResults")(results);
   }
 };
 
 struct LoggerWrap : Logger, bp::wrapper<Logger>
 {
-  void setMaxProgress(unsigned long)
+  void setMaxProgress(unsigned long max_progress)
   {
-    this->get_override("setMaxProgress")();
+    this->get_override("setMaxProgress")(max_progress);
   }
 
-  void printProgress(unsigned long) const
+  void printProgress(unsigned long progress) const
   {
-    this->get_override("printProgress")();
+    this->get_override("printProgress")(progress);
   }
 
-  void printResults(const StudyResults&) const
+  void printResults(const StudyResults& results) const
   {
-    this->get_override("printResults")();
+    this->get_override("printResults")(results);
   }
 
-  void print(const std::string&) const
+  void print(const std::string& msg) const
   {
-    this->get_override("print")();
-  }
-};
-
-struct LoggerFactoryWrap : LoggerFactory, bp::wrapper<LoggerFactory>
-{
-  Logger::ConstPtr create(const YAML::Node&) const
-  {
-    return this->get_override("create")();
+    this->get_override("print")(msg);
   }
 };
 
 BOOST_PYTHON_MODULE(reach_core_python)
 {
+  Py_Initialize();
+  bp::numpy::initialize();
+
   bp::class_<YAML::Node>("YAMLNode").def("LoadFile", &YAML::LoadFile);
   bp::class_<boost::filesystem::path>("Path", bp::init<std::string>());
 
@@ -149,20 +188,12 @@ BOOST_PYTHON_MODULE(reach_core_python)
     bp::class_<IKSolverWrap, boost::noncopyable>("IKSolver")
         .def("getJointNames", bp::pure_virtual(&IKSolver::getJointNames))
         .def("solveIK", bp::pure_virtual(&IKSolver::solveIK));
-
-    bp::class_<IKSolverFactoryWrap, boost::noncopyable>("IKSolverFactory")
-        .def("create", bp::pure_virtual(&IKSolverFactory::create))
-        .def("getSection", &IKSolverFactory::getSection);
   }
 
   // Wrap the Evaluators
   {
     bp::class_<EvaluatorWrap, boost::noncopyable>("Evaluator")
         .def("calculateScore", bp::pure_virtual(&Evaluator::calculateScore));
-
-    bp::class_<EvaluatorFactoryWrap, boost::noncopyable>("EvaluatorFactory")
-        .def("create", bp::pure_virtual(&EvaluatorFactory::create))
-        .def("getSection", &EvaluatorFactory::getSection);
   }
   // Wrap the TargetPoseGenerators
   {
@@ -172,28 +203,24 @@ BOOST_PYTHON_MODULE(reach_core_python)
 
   // Wrap the Displays
   {
+    bp::class_<ReachDatabase>("ReachDatabase").def("calculateResults", &ReachDatabase::calculateResults);
+
     bp::class_<DisplayWrap, boost::noncopyable>("Display")
         .def("showEnvironment", bp::pure_virtual(&Display::showEnvironment))
         .def("updateRobotPose", bp::pure_virtual(&Display::updateRobotPose))
         .def("showReachNeighborhood", bp::pure_virtual(&Display::showReachNeighborhood))
         .def("showResults", bp::pure_virtual(&Display::showResults));
-
-    bp::class_<DisplayFactoryWrap, boost::noncopyable>("DisplayFactory")
-        .def("create", bp::pure_virtual(&DisplayFactory::create))
-        .def("getSection", &DisplayFactory::getSection);
   }
 
   // Wrap the Loggers
   {
+    bp::class_<StudyResults>("StudyResults").def("print", &StudyResults::print);
+
     bp::class_<LoggerWrap, boost::noncopyable>("Logger")
         .def("setMaxProgress", bp::pure_virtual(&Logger::setMaxProgress))
         .def("printProgress", bp::pure_virtual(&Logger::printProgress))
         .def("printResults", bp::pure_virtual(&Logger::printResults))
         .def("print", bp::pure_virtual(&Logger::print));
-
-    bp::class_<LoggerFactoryWrap, boost::noncopyable>("LoggerFactory")
-        .def("create", bp::pure_virtual(&LoggerFactory::create))
-        .def("getSection", &LoggerFactory::getSection);
   }
 
   // Wrap the Parameters
@@ -204,14 +231,21 @@ BOOST_PYTHON_MODULE(reach_core_python)
         .def_readwrite("radius", &ReachStudy::Parameters::radius);
   }
 
-  bp::class_<ReachStudy>(
-      "ReachStudy", bp::init<IKSolver::ConstPtr, Evaluator::ConstPtr, TargetPoseGenerator::ConstPtr, Display::ConstPtr,
-                             Logger::ConstPtr, const ReachStudy::Parameters, const std::string&>())
+  bp::class_<ReachStudy>("ReachStudy",
+                         bp::init<const IKSolver*, const Evaluator*, const TargetPoseGenerator*, const Display*,
+                                  Logger*, const ReachStudy::Parameters, const std::string&>())
       .def("load", &ReachStudy::load)
       .def("save", &ReachStudy::save)
       .def("getDatabase", &ReachStudy::getDatabase)
       .def("run", &ReachStudy::run)
       .def("optimize", &ReachStudy::optimize)
       .def("getAverageNeighborsCounts", &ReachStudy::getAverageNeighborsCount);
+
+  bp::register_ptr_to_python<ReachDatabase::ConstPtr>();
+  bp::register_ptr_to_python<IKSolver::ConstPtr>();
+  bp::register_ptr_to_python<Evaluator::ConstPtr>();
+  bp::register_ptr_to_python<Display::ConstPtr>();
+  bp::register_ptr_to_python<Logger::Ptr>();
+  bp::register_ptr_to_python<TargetPoseGenerator::ConstPtr>();
 }
 }  // namespace reach

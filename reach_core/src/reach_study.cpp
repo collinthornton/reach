@@ -26,8 +26,8 @@
 namespace reach
 {
 ReachStudy::ReachStudy(IKSolver::ConstPtr ik_solver, Evaluator::ConstPtr evaluator,
-                       TargetPoseGenerator::ConstPtr target_generator, Display::ConstPtr display,
-                       Logger::ConstPtr logger, const Parameters params, const std::string& name)
+                       TargetPoseGenerator::ConstPtr target_generator, Display::ConstPtr display, Logger::Ptr logger,
+                       const Parameters params, const std::string& name)
   : params_(std::move(params))
   , db_(new ReachDatabase(name))
   , ik_solver_(std::move(ik_solver))
@@ -36,6 +36,19 @@ ReachStudy::ReachStudy(IKSolver::ConstPtr ik_solver, Evaluator::ConstPtr evaluat
   , logger_(std::move(logger))
   , target_poses_(target_generator->generate())
 {
+}
+
+ReachStudy::ReachStudy(const IKSolver* ik_solver, const Evaluator* evaluator,
+                       const TargetPoseGenerator* target_generator, const Display* display, Logger* logger,
+                       const Parameters params, const std::string& name)
+  : target_poses_(target_generator->generate())
+{
+  params_ = std::move(params);
+  db_ = ReachDatabase::Ptr(new ReachDatabase(name));
+  ik_solver_ = IKSolver::ConstPtr(std::move(ik_solver));
+  evaluator_ = Evaluator::ConstPtr(std::move(evaluator));
+  display_ = Display::ConstPtr(std::move(display));
+  logger_ = Logger::Ptr(std::move(logger));
 }
 
 void ReachStudy::load(const std::string& filename)
@@ -69,7 +82,7 @@ void ReachStudy::run()
   std::atomic<unsigned long> current_counter;
   current_counter = 0;
 
-#pragma omp parallel for num_threads(std::thread::hardware_concurrency())
+  //#pragma omp parallel for num_threads(std::thread::hardware_concurrency())
   for (std::size_t i = 0; i < target_poses_.size(); ++i)
   {
     const Eigen::Isometry3d& tgt_frame = target_poses_[i] * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX());
@@ -136,7 +149,7 @@ void ReachStudy::optimize()
     // Randomize
     std::random_shuffle(rand_vec.begin(), rand_vec.end());
 
-#pragma parallel for num_threads(std::thread::hardware_concurrency())
+    //#pragma parallel for num_threads(std::thread::hardware_concurrency())
     for (std::size_t i = 0; i < rand_vec.size(); ++i)
     {
       auto it = db_->begin();
@@ -259,7 +272,7 @@ void runReachStudy(const YAML::Node& config, const std::string& config_name, con
   }
 
   // Load the logger plugin
-  reach::Logger::ConstPtr logger;
+  reach::Logger::Ptr logger;
   {
     auto factory = loader.createInstance<LoggerFactory>(get<std::string>(logger_config, "name"));
     logger = factory->create(logger_config);

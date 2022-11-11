@@ -50,7 +50,7 @@ protected:
 
 struct ConsoleLoggerFactory : public LoggerFactory
 {
-  Logger::ConstPtr create(const YAML::Node& /*config*/) const override
+  Logger::Ptr create(const YAML::Node& /*config*/) const override
   {
     return std::make_shared<ConsoleLogger>();
   }
@@ -97,7 +97,7 @@ protected:
 
 struct BoostProgressConsoleLoggerFactory : public LoggerFactory
 {
-  Logger::ConstPtr create(const YAML::Node& /*config*/) const override
+  Logger::Ptr create(const YAML::Node& /*config*/) const override
   {
     return std::make_shared<BoostProgressConsoleLogger>();
   }
