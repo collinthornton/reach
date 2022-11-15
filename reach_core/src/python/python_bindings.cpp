@@ -25,56 +25,123 @@ namespace bp = boost::python;
 
 namespace reach
 {
+void print_py_error()
+{
+  try
+  {
+    PyErr_Print();
+    bp::object sys(bp::handle<>(PyImport_ImportModule("sys")));
+    bp::object err = sys.attr("stderr");
+    std::string err_text = bp::extract<std::string>(err.attr("getvalue")());
+    std::cout << err_text << std::endl;
+  }
+  catch (...)
+  {
+    std::cout << "Failed to parse python error" << std::endl;
+  }
+  PyErr_Clear();
+}
+
+class ReachStudyWrap : public ReachStudy
+{
+public:
+  ReachStudyWrap(const IKSolver* ik_solver, const Evaluator* evaluator, const TargetPoseGenerator* pose_generator,
+                 const Display* display, Logger* logger, const ReachStudy::Parameters params,
+                 const std::string& study_name)
+    : ReachStudy(IKSolver::ConstPtr(std::move(ik_solver), [](const IKSolver*) {}),
+                 Evaluator::ConstPtr(std::move(evaluator), [](const Evaluator*) {}),
+                 TargetPoseGenerator::ConstPtr(std::move(pose_generator), [](const TargetPoseGenerator*) {}),
+                 Display::ConstPtr(std::move(display), [](const Display*) {}),
+                 Logger::Ptr(std::move(logger), [](Logger*) {}), params, study_name, 1)
+  {
+  }
+};
+
 struct IKSolverWrap : IKSolver, bp::wrapper<IKSolver>
 {
   std::vector<std::string> getJointNames() const
   {
     std::vector<std::string> names;
-    bp::list name_list = this->get_override("getJointNames")();
 
-    for (int i = 0; i < bp::len(name_list); ++i)
+    try
     {
-      std::string name = bp::extract<std::string>(name_list[i]);
-      names.push_back(name);
+      bp::list name_list = this->get_override("getJointNames")();
+
+      for (int i = 0; i < bp::len(name_list); ++i)
+      {
+        std::string name = bp::extract<std::string>(name_list[i]);
+        names.push_back(name);
+      }
     }
+    catch (const bp::error_already_set& e)
+    {
+      std::cout << "Exception in getJointNames(): ";
+      print_py_error();
+    }
+    catch (const std::exception& e)
+    {
+      std::cout << "Exception in getJointNames(): " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+      std::cout << "Exception in getJointNames(): UNKOWN" << std::endl;
+    }
+
     return names;
   }
 
   std::vector<std::vector<double>> solveIK(const Eigen::Isometry3d& target,
                                            const std::map<std::string, double>& seed) const
   {
-    bp::tuple shape = bp::make_tuple(4, 4);
-    bp::numpy::dtype dtype = bp::numpy::dtype::get_builtin<double>();
-    bp::numpy::ndarray array = bp::numpy::zeros(shape, dtype);
-
-    for (int i = 0; i < 4; ++i)
-    {
-      for (int j = 0; j < 4; ++j)
-      {
-        array[i, j] = target.matrix()(i, j);
-      }
-    }
-
-    bp::dict dictionary;
-    for (auto pair : seed)
-    {
-      dictionary[pair.first] = pair.second;
-    }
-
-    bp::list list = this->get_override("solveIK")(array, dictionary);
-
     std::vector<std::vector<double>> output;
 
-    for (int i = 0; i < bp::len(list); ++i)
+    try
     {
-      std::vector<double> sub_vec;
-      bp::list sub_list = bp::extract<bp::list>(list[i]);
-      for (int j = 0; j < bp::len(sub_list); ++j)
+      bp::tuple shape = bp::make_tuple(4, 4);
+      bp::numpy::dtype dtype = bp::numpy::dtype::get_builtin<double>();
+      bp::numpy::ndarray array = bp::numpy::zeros(shape, dtype);
+
+      for (int i = 0; i < 4; ++i)
       {
-        sub_vec.push_back(bp::extract<double>(sub_list[j]));
+        for (int j = 0; j < 4; ++j)
+        {
+          array[i, j] = target.matrix()(i, j);
+        }
       }
-      output.push_back(sub_vec);
+
+      bp::dict dictionary;
+      for (std::pair<std::string, double> pair : seed)
+      {
+        dictionary[pair.first] = pair.second;
+      }
+
+      bp::list list = this->get_override("solveIK")(array, dictionary);
+
+      for (int i = 0; i < bp::len(list); ++i)
+      {
+        std::vector<double> sub_vec;
+        bp::list sub_list = bp::extract<bp::list>(list[i]);
+        for (int j = 0; j < bp::len(sub_list); ++j)
+        {
+          sub_vec.push_back(bp::extract<double>(sub_list[j]));
+        }
+        output.push_back(sub_vec);
+      }
     }
+    catch (const bp::error_already_set& e)
+    {
+      std::cout << "Exception in solveIK(): ";
+      print_py_error();
+    }
+    catch (const std::exception& e)
+    {
+      std::cout << "Exception in solveIK(): " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+      std::cout << "Exception in solveIK(): UNKOWN" << std::endl;
+    }
+
     return output;
   }
 };
@@ -83,12 +150,33 @@ struct EvaluatorWrap : Evaluator, bp::wrapper<Evaluator>
 {
   double calculateScore(const std::map<std::string, double>& map) const
   {
-    bp::dict dictionary;
-    for (auto pair : map)
+    double score;
+
+    try
     {
-      dictionary[pair.first] = pair.second;
+      bp::dict dictionary;
+      for (auto pair : map)
+      {
+        dictionary[pair.first] = pair.second;
+      }
+
+      score = this->get_override("calculateScore")(dictionary);
     }
-    return this->get_override("calculateScore")(dictionary);
+    catch (const bp::error_already_set& e)
+    {
+      std::cout << "Exception in script: ";
+      print_py_error();
+    }
+    catch (const std::exception& e)
+    {
+      std::cout << "Exception in script: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+      std::cout << "Exception in script: UNKOWN" << std::endl;
+    }
+
+    return score;
   }
 };
 
@@ -98,23 +186,38 @@ struct TargetPoseGeneratorWrap : TargetPoseGenerator, bp::wrapper<TargetPoseGene
   {
     VectorIsometry3d eigen_list;
 
-    bp::list np_list = this->get_override("generate")();
-
-    // Convert the list of 4x4 numpy arrays to VectorIsometry3d
-    for (int i = 0; i < bp::len(np_list); ++i)
+    try
     {
-      Eigen::Isometry3d eigen_mat;
-      bp::tuple tuple = bp::extract<bp::tuple>(np_list[i]);
+      bp::list np_list = this->get_override("generate")();
 
-      for (int j = 0; j < 4; ++j)
+      // Convert the list of 4x4 numpy arrays to VectorIsometry3d
+      for (int i = 0; i < bp::len(np_list); ++i)
       {
-        bp::tuple row_tuple = bp::extract<bp::tuple>(tuple[j]);
-        for (int k = 0; k < 4; ++k)
+        Eigen::Isometry3d eigen_mat;
+        bp::numpy::ndarray np_array = bp::numpy::from_object(np_list[i]);
+
+        for (int j = 0; j < 4; ++j)
         {
-          eigen_mat.matrix()(j, k) = bp::extract<double>(row_tuple[k]);
+          for (int k = 0; k < 4; ++k)
+          {
+            eigen_mat.matrix()(j, k) = bp::extract<double>(np_array[j][k]);
+          }
         }
+        eigen_list.push_back(eigen_mat);
       }
-      eigen_list.push_back(eigen_mat);
+    }
+    catch (const bp::error_already_set& e)
+    {
+      std::cout << "Exception in script: ";
+      print_py_error();
+    }
+    catch (const std::exception& e)
+    {
+      std::cout << "Exception in script: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+      std::cout << "Exception in script: UNKOWN" << std::endl;
     }
 
     return eigen_list;
@@ -159,7 +262,23 @@ struct LoggerWrap : Logger, bp::wrapper<Logger>
 
   void printProgress(unsigned long progress) const
   {
-    this->get_override("printProgress")(progress);
+    try
+    {
+      this->get_override("printProgress")(progress);
+    }
+    catch (const bp::error_already_set& e)
+    {
+      std::cout << "Exception in script: ";
+      print_py_error();
+    }
+    catch (const std::exception& e)
+    {
+      std::cout << "Exception in script: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+      std::cout << "Exception in script: UNKOWN" << std::endl;
+    }
   }
 
   void printResults(const StudyResults& results) const
@@ -176,6 +295,7 @@ struct LoggerWrap : Logger, bp::wrapper<Logger>
 BOOST_PYTHON_MODULE(reach_core_python)
 {
   Py_Initialize();
+  PyEval_InitThreads();
   bp::numpy::initialize();
 
   bp::class_<YAML::Node>("YAMLNode").def("LoadFile", &YAML::LoadFile);
@@ -231,15 +351,15 @@ BOOST_PYTHON_MODULE(reach_core_python)
         .def_readwrite("radius", &ReachStudy::Parameters::radius);
   }
 
-  bp::class_<ReachStudy>("ReachStudy",
-                         bp::init<const IKSolver*, const Evaluator*, const TargetPoseGenerator*, const Display*,
-                                  Logger*, const ReachStudy::Parameters, const std::string&>())
-      .def("load", &ReachStudy::load)
-      .def("save", &ReachStudy::save)
-      .def("getDatabase", &ReachStudy::getDatabase)
-      .def("run", &ReachStudy::run)
-      .def("optimize", &ReachStudy::optimize)
-      .def("getAverageNeighborsCounts", &ReachStudy::getAverageNeighborsCount);
+  bp::class_<ReachStudyWrap>("ReachStudy",
+                             bp::init<const IKSolver*, const Evaluator*, const TargetPoseGenerator*, const Display*,
+                                      Logger*, const ReachStudy::Parameters, const std::string&>())
+      .def("load", &ReachStudyWrap::load)
+      .def("save", &ReachStudyWrap::save)
+      .def("getDatabase", &ReachStudyWrap::getDatabase)
+      .def("run", &ReachStudyWrap::run)
+      .def("optimize", &ReachStudyWrap::optimize)
+      .def("getAverageNeighborsCounts", &ReachStudyWrap::getAverageNeighborsCount);
 
   bp::register_ptr_to_python<ReachDatabase::ConstPtr>();
   bp::register_ptr_to_python<IKSolver::ConstPtr>();

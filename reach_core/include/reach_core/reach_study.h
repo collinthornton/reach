@@ -24,6 +24,7 @@
 #include <reach_core/utils.h>
 
 #include <boost/filesystem/path.hpp>
+#include <thread>
 
 namespace reach
 {
@@ -41,10 +42,8 @@ public:
   };
 
   ReachStudy(IKSolver::ConstPtr ik_solver, Evaluator::ConstPtr evaluator, TargetPoseGenerator::ConstPtr pose_generator,
-             Display::ConstPtr display, Logger::Ptr logger, const Parameters params, const std::string& study_name);
-
-  ReachStudy(const IKSolver* ik_solver, const Evaluator* evaluator, const TargetPoseGenerator* pose_generator,
-             const Display* display, Logger* logger, const Parameters params, const std::string& study_name);
+             Display::ConstPtr display, Logger::Ptr logger, const Parameters params, const std::string& study_name,
+             const size_t max_threads = std::thread::hardware_concurrency());
 
   void load(const std::string& filename);
   void run();
@@ -56,7 +55,7 @@ public:
 
   std::tuple<double, double> getAverageNeighborsCount() const;
 
-private:
+protected:
   Parameters params_;
   ReachDatabase::Ptr db_;
 
@@ -65,6 +64,8 @@ private:
   Evaluator::ConstPtr evaluator_;
   Display::ConstPtr display_;
   Logger::Ptr logger_;
+
+  const size_t max_threads_;
 
   const VectorIsometry3d target_poses_;
 
