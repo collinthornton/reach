@@ -3,8 +3,11 @@
 import argparse
 import os
 import shutil
+import yaml
 
-from create_reach_study import *
+from reach_core.reach_core_python import YAML_CPP_Load
+
+from reach_study import *
 
 def main(results_dir, config_name, config_file, sleep, delete_existing):
     # Delete the old study if requested
@@ -25,18 +28,6 @@ def main(results_dir, config_name, config_file, sleep, delete_existing):
         display = NewDisplay()
         logger = NewLogger()
 
-        # loader = PluginLoader()
-        # ik_solver = loader.createInstance('')
-        # ik_solver.solveIK()
-        #
-        # my_ik_solver = MyIKSolver()
-        # reach_study = ReachStudy(my_ik_solver, ...)
-        #
-        #
-        #
-        # reach_study = createReachStudy(yaml)
-        # reach_study = ReachStudy(...)
-
         params = rp.Parameters()
         params.radius = 0.4
         params.max_steps = 10
@@ -47,8 +38,44 @@ def main(results_dir, config_name, config_file, sleep, delete_existing):
 
     # Otherwise load the YAML file and run the reach study
     else:
-        node = rp.YAMLNode.LoadFile(args.config_file)
-        rp.runReachStudy(node, args.config_name, rp.Path(args.results_dir), False)
+        with open(args.config_file, "r") as stream:
+            try:
+                config = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                print(e)
+                exit()
+
+        opt_config = config["optimization"]
+        ik_config = config["ik_solver"]
+        pose_gen_config = config["target_pose_generator"]
+        eval_config = config["evaluator"]
+        display_config = config["display"]
+        logger_config = config["logger"]
+
+        loader = rp.PluginLoader()
+        loader.search_libraries_env = "REACH_PLUGINS"
+
+        ik_solver_factory = loader.createIKSolverFactoryInstance(ik_config["name"])
+        ik_solver = ik_solver_factory.create(YAML_CPP_Load(yaml.dump(ik_config)))
+
+        target_pose_factory = loader.createTargetPoseGeneratorFactoryInstance(pose_gen_config["name"])
+        target_pose_generator = target_pose_factory.create(YAML_CPP_Load(yaml.dump(pose_gen_config)))
+
+        evaluator_factory = loader.createEvaluatorFactoryInstance(eval_config["name"])
+        evaluator = evaluator_factory.create(YAML_CPP_Load(yaml.dump(eval_config)))
+
+        display_factory = loader.createDisplayFactoryInstance(display_config["name"])
+        display = display_factory.create(YAML_CPP_Load(yaml.dump(display_config)))
+
+        logger_factory = loader.createLoggerFactoryInstance(logger_config["name"])
+        logger = logger_factory.create(YAML_CPP_Load(yaml.dump(logger_config)))
+
+        params = rp.Parameters()
+        params.radius = opt_config["radius"]
+        params.max_steps = opt_config["max_steps"]
+        params.step_improvement_threshold = opt_config["step_improvement_threshold"]
+
+        runReachStudyPy(ik_solver, evaluator, target_pose_generator, display, logger, params, config_name, results_dir)
 
 
 if __name__ == "__main__":

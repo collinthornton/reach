@@ -15,18 +15,18 @@
  */
 #include <reach_core/reach_study.h>
 
+#include <boost_plugin_loader/plugin_loader.hpp>
 #include <boost/python.hpp>
 #include <boost/python/converter/builtin_converters.hpp>
 #include <boost/python/numpy.hpp>
 #include <cstdarg>
-#include <mutex>
 #include <yaml-cpp/yaml.h>
 
 namespace bp = boost::python;
 
 namespace reach
 {
-void print_py_error()
+void print_py_error(std::stringstream& ss)
 {
   try
   {
@@ -34,11 +34,11 @@ void print_py_error()
     bp::object sys(bp::handle<>(PyImport_ImportModule("sys")));
     bp::object err = sys.attr("stderr");
     std::string err_text = bp::extract<std::string>(err.attr("getvalue")());
-    std::cout << err_text << std::endl;
+    ss << err_text << std::endl;
   }
   catch (...)
   {
-    std::cout << "Failed to parse python error" << std::endl;
+    ss << "Failed to parse python error" << std::endl;
   }
   PyErr_Clear();
 }
@@ -52,36 +52,14 @@ auto call_and_handle(Function func, ClassT* obj, const char* function_name, Args
   }
   catch (const bp::error_already_set& e)
   {
-    std::cout << "Exception in " << function_name << ": ";
-    print_py_error();
-    throw e;
-  }
-  catch (const std::exception& e)
-  {
-    std::cout << "Exception in " << function_name << ": " << e.what() << std::endl;
-    throw e;
-  }
-  catch (...)
-  {
-    std::cout << "Exception in " << function_name << ": UNKOWN" << std::endl;
-    throw;
+    std::stringstream ss;
+    ss << "Python exception in " << function_name << ": ";
+    print_py_error(ss);
+
+    std::runtime_error exception(ss.str());
+    throw exception;
   }
 }
-
-class ReachStudyPython : public ReachStudy
-{
-public:
-  ReachStudyPython(const IKSolver* ik_solver, const Evaluator* evaluator, const TargetPoseGenerator* pose_generator,
-                   const Display* display, Logger* logger, const ReachStudy::Parameters params,
-                   const std::string& study_name)
-    : ReachStudy(IKSolver::ConstPtr(std::move(ik_solver), [](const IKSolver*) {}),
-                 Evaluator::ConstPtr(std::move(evaluator), [](const Evaluator*) {}),
-                 TargetPoseGenerator::ConstPtr(std::move(pose_generator), [](const TargetPoseGenerator*) {}),
-                 Display::ConstPtr(std::move(display), [](const Display*) {}),
-                 Logger::Ptr(std::move(logger), [](Logger*) {}), params, study_name, 1)
-  {
-  }
-};
 
 struct IKSolverPython : IKSolver, bp::wrapper<IKSolver>
 {
@@ -149,6 +127,18 @@ struct IKSolverPython : IKSolver, bp::wrapper<IKSolver>
   }
 };
 
+struct IKSolverFactoryPython : IKSolverFactory, bp::wrapper<IKSolverFactory>
+{
+  IKSolver::ConstPtr createFunc(const YAML::Node& config) const
+  {
+    return this->get_override("create")(config);
+  }
+  IKSolver::ConstPtr create(const YAML::Node& config) const
+  {
+    return call_and_handle(&IKSolverFactoryPython::createFunc, this, "IKSolverFactory::create", config);
+  }
+};
+
 struct EvaluatorPython : Evaluator, bp::wrapper<Evaluator>
 {
   double calculateScoreFunc(const std::map<std::string, double>& map) const
@@ -166,6 +156,18 @@ struct EvaluatorPython : Evaluator, bp::wrapper<Evaluator>
   double calculateScore(const std::map<std::string, double>& map) const
   {
     return call_and_handle(&EvaluatorPython::calculateScoreFunc, this, "calculateScore()", map);
+  }
+};
+
+struct EvaluatorFactoryPython : EvaluatorFactory, bp::wrapper<EvaluatorFactory>
+{
+  Evaluator::ConstPtr createFunc(const YAML::Node& config) const
+  {
+    return this->get_override("create")(config);
+  }
+  Evaluator::ConstPtr create(const YAML::Node& config) const
+  {
+    return call_and_handle(&EvaluatorFactoryPython::createFunc, this, "EvaluatorFactory::create", config);
   }
 };
 
@@ -198,6 +200,19 @@ struct TargetPoseGeneratorPython : TargetPoseGenerator, bp::wrapper<TargetPoseGe
   VectorIsometry3d generate() const
   {
     return call_and_handle(&TargetPoseGeneratorPython::generateFunc, this, "generate()");
+  }
+};
+
+struct TargetPoseGeneratorFactoryPython : TargetPoseGeneratorFactory, bp::wrapper<TargetPoseGeneratorFactory>
+{
+  TargetPoseGenerator::ConstPtr createFunc(const YAML::Node& config) const
+  {
+    return this->get_override("create")(config);
+  }
+  TargetPoseGenerator::ConstPtr create(const YAML::Node& config) const
+  {
+    return call_and_handle(&TargetPoseGeneratorFactoryPython::createFunc, this, "TargetPoseGeneratorFactory::create",
+                           config);
   }
 };
 
@@ -246,6 +261,18 @@ struct DisplayPython : Display, bp::wrapper<Display>
   }
 };
 
+struct DisplayFactoryPython : DisplayFactory, bp::wrapper<DisplayFactory>
+{
+  Display::ConstPtr createFunc(const YAML::Node& config) const
+  {
+    return this->get_override("create")(config);
+  }
+  Display::ConstPtr create(const YAML::Node& config) const
+  {
+    return call_and_handle(&DisplayFactoryPython::createFunc, this, "DisplayFactory::create", config);
+  }
+};
+
 struct LoggerPython : Logger, bp::wrapper<Logger>
 {
   void setMaxProgressFunc(unsigned long max_progress)
@@ -283,6 +310,85 @@ struct LoggerPython : Logger, bp::wrapper<Logger>
   {
     return call_and_handle(&LoggerPython::printFunc, this, "print()", msg);
   }
+
+  std::string name() const
+  {
+    return this->get_override("name")();
+  }
+};
+
+struct LoggerFactoryPython : LoggerFactory, bp::wrapper<LoggerFactory>
+{
+  Logger::Ptr createFunc(const YAML::Node& config) const
+  {
+    return this->get_override("create")(config);
+  }
+  Logger::Ptr create(const YAML::Node& config) const
+  {
+    return call_and_handle(&LoggerFactoryPython::createFunc, this, "LoggerFactory::create", config);
+  }
+};
+
+class ReachStudyPython : public ReachStudy
+{
+public:
+  ReachStudyPython(const IKSolver* ik_solver, const Evaluator* evaluator, const TargetPoseGenerator* pose_generator,
+                   const Display* display, Logger* logger, const ReachStudy::Parameters params,
+                   const std::string& study_name)
+    : ReachStudy(IKSolver::ConstPtr(std::move(ik_solver), [](const IKSolver*) {}),
+                 Evaluator::ConstPtr(std::move(evaluator), [](const Evaluator*) {}),
+                 TargetPoseGenerator::ConstPtr(std::move(pose_generator), [](const TargetPoseGenerator*) {}),
+                 Display::ConstPtr(std::move(display), [](const Display*) {}),
+                 Logger::Ptr(std::move(logger), [](Logger*) {}), params, study_name)
+  {
+    std::vector<std::string> python_interface_names;
+
+    auto python_ik = dynamic_cast<const IKSolverPython*>(ik_solver);
+    if (python_ik)
+    {
+      python_interface_names.push_back(boost::core::demangle(typeid(*python_ik).name()));
+    }
+
+    auto python_evaluator = dynamic_cast<const EvaluatorPython*>(evaluator);
+    if (python_evaluator)
+    {
+      python_interface_names.push_back(boost::core::demangle(typeid(*python_evaluator).name()));
+    }
+
+    auto python_pose_generator = dynamic_cast<const TargetPoseGeneratorPython*>(pose_generator);
+    if (python_pose_generator)
+    {
+      python_interface_names.push_back(boost::core::demangle(typeid(*python_pose_generator).name()));
+    }
+
+    auto python_display = dynamic_cast<const DisplayPython*>(display);
+    if (python_display)
+    {
+      python_interface_names.push_back(boost::core::demangle(typeid(*python_display).name()));
+    }
+
+    auto python_logger = dynamic_cast<const LoggerPython*>(logger);
+    if (python_logger)
+    {
+      python_interface_names.push_back(boost::core::demangle(typeid(*python_logger).name()));
+    }
+
+    if (!python_interface_names.empty())
+    {
+      this->max_threads_ = 1;
+
+      logger->print("Detected Python interfaces of the following abstract types:");
+      for (const std::string& name : python_interface_names)
+      {
+        logger->print(name);
+      }
+      logger->print("Setting max threads to 1");
+    }
+    else
+    {
+      logger->print("Did not detect any Python interfaces");
+    }
+  }
 };
 
 BOOST_PYTHON_MODULE(reach_core_python)
@@ -291,27 +397,49 @@ BOOST_PYTHON_MODULE(reach_core_python)
   PyEval_InitThreads();
   bp::numpy::initialize();
 
-  bp::class_<YAML::Node>("YAMLNode").def("LoadFile", &YAML::LoadFile);
-  bp::class_<boost::filesystem::path>("Path", bp::init<std::string>());
+  // Wrap Yaml-cpp
+  {
+    YAML::Node (*LoadFromString)(const std::string&) = &YAML::Load;
+    bp::def("YAML_CPP_Load", LoadFromString);
+    bp::class_<YAML::Node>("YAML_Node");
+  }
 
-  bp::def("runReachStudy", runReachStudy);
+  // Wrap boost_plugin_loader::PluginLoader
+  {
+    bp::class_<boost::filesystem::path>("Path", bp::init<std::string>());
+    bp::class_<boost_plugin_loader::PluginLoader>("PluginLoader")
+        .def_readwrite("search_libraries_env", &boost_plugin_loader::PluginLoader::search_libraries_env)
+        .def("createIKSolverFactoryInstance", &boost_plugin_loader::PluginLoader::createInstance<IKSolverFactory>)
+        .def("createTargetPoseGeneratorFactoryInstance",
+             &boost_plugin_loader::PluginLoader::createInstance<TargetPoseGeneratorFactory>)
+        .def("createEvaluatorFactoryInstance", &boost_plugin_loader::PluginLoader::createInstance<EvaluatorFactory>)
+        .def("createDisplayFactoryInstance", &boost_plugin_loader::PluginLoader::createInstance<DisplayFactory>)
+        .def("createLoggerFactoryInstance", &boost_plugin_loader::PluginLoader::createInstance<LoggerFactory>);
+  }
 
   // Wrap the IKSolvers
   {
     bp::class_<IKSolverPython, boost::noncopyable>("IKSolver")
         .def("getJointNames", bp::pure_virtual(&IKSolver::getJointNames))
         .def("solveIK", bp::pure_virtual(&IKSolver::solveIK));
+    bp::class_<IKSolverFactoryPython, boost::noncopyable>("IKSolverFactory")
+        .def("create", bp::pure_virtual(&IKSolverFactory::create));
   }
 
   // Wrap the Evaluators
   {
     bp::class_<EvaluatorPython, boost::noncopyable>("Evaluator")
         .def("calculateScore", bp::pure_virtual(&Evaluator::calculateScore));
+    bp::class_<EvaluatorFactoryPython, boost::noncopyable>("EvaluatorFactory")
+        .def("create", bp::pure_virtual(&EvaluatorFactory::create));
   }
+
   // Wrap the TargetPoseGenerators
   {
     bp::class_<TargetPoseGeneratorPython, boost::noncopyable>("TargetPoseGenerator")
         .def("generate", bp::pure_virtual(&TargetPoseGenerator::generate));
+    bp::class_<TargetPoseGeneratorFactoryPython, boost::noncopyable>("TargetPoseGeneratorFactory")
+        .def("create", bp::pure_virtual(&TargetPoseGeneratorFactory::create));
   }
 
   // Wrap the Displays
@@ -323,6 +451,8 @@ BOOST_PYTHON_MODULE(reach_core_python)
         .def("updateRobotPose", bp::pure_virtual(&Display::updateRobotPose))
         .def("showReachNeighborhood", bp::pure_virtual(&Display::showReachNeighborhood))
         .def("showResults", bp::pure_virtual(&Display::showResults));
+    bp::class_<DisplayFactoryPython, boost::noncopyable>("DisplayFactory")
+        .def("create", bp::pure_virtual(&DisplayFactory::create));
   }
 
   // Wrap the Loggers
@@ -334,6 +464,8 @@ BOOST_PYTHON_MODULE(reach_core_python)
         .def("printProgress", bp::pure_virtual(&Logger::printProgress))
         .def("printResults", bp::pure_virtual(&Logger::printResults))
         .def("print", bp::pure_virtual(&Logger::print));
+    bp::class_<LoggerFactoryPython, boost::noncopyable>("LoggerFactory")
+        .def("create", bp::pure_virtual(&LoggerFactory::create));
   }
 
   // Wrap the Parameters
@@ -344,21 +476,38 @@ BOOST_PYTHON_MODULE(reach_core_python)
         .def_readwrite("radius", &ReachStudy::Parameters::radius);
   }
 
-  bp::class_<ReachStudyPython>("ReachStudy",
-                               bp::init<const IKSolver*, const Evaluator*, const TargetPoseGenerator*, const Display*,
-                                        Logger*, const ReachStudy::Parameters, const std::string&>())
-      .def("load", &ReachStudyPython::load)
-      .def("save", &ReachStudyPython::save)
-      .def("getDatabase", &ReachStudyPython::getDatabase)
-      .def("run", &ReachStudyPython::run)
-      .def("optimize", &ReachStudyPython::optimize)
-      .def("getAverageNeighborsCounts", &ReachStudyPython::getAverageNeighborsCount);
+  // Wrap ReachStudy
+  {
+    bp::def("runReachStudy", runReachStudy);
 
-  bp::register_ptr_to_python<ReachDatabase::ConstPtr>();
-  bp::register_ptr_to_python<IKSolver::ConstPtr>();
-  bp::register_ptr_to_python<Evaluator::ConstPtr>();
-  bp::register_ptr_to_python<Display::ConstPtr>();
-  bp::register_ptr_to_python<Logger::Ptr>();
-  bp::register_ptr_to_python<TargetPoseGenerator::ConstPtr>();
+    bp::class_<ReachStudyPython>("ReachStudy",
+                                 bp::init<const IKSolver*, const Evaluator*, const TargetPoseGenerator*, const Display*,
+                                          Logger*, const ReachStudy::Parameters, const std::string&>())
+        .def("load", &ReachStudyPython::load)
+        .def("save", &ReachStudyPython::save)
+        .def("getDatabase", &ReachStudyPython::getDatabase)
+        .def("run", &ReachStudyPython::run)
+        .def("optimize", &ReachStudyPython::optimize)
+        .def("getAverageNeighborsCounts", &ReachStudyPython::getAverageNeighborsCount);
+  }
+
+  // Register shared_ptrs
+  {
+    bp::register_ptr_to_python<ReachDatabase::ConstPtr>();
+    bp::register_ptr_to_python<IKSolver::Ptr>();
+    bp::register_ptr_to_python<IKSolver::ConstPtr>();
+    bp::register_ptr_to_python<IKSolverFactory::Ptr>();
+    bp::register_ptr_to_python<Evaluator::Ptr>();
+    bp::register_ptr_to_python<Evaluator::ConstPtr>();
+    bp::register_ptr_to_python<EvaluatorFactory::Ptr>();
+    bp::register_ptr_to_python<Display::Ptr>();
+    bp::register_ptr_to_python<Display::ConstPtr>();
+    bp::register_ptr_to_python<DisplayFactory::Ptr>();
+    bp::register_ptr_to_python<Logger::Ptr>();
+    bp::register_ptr_to_python<LoggerFactory::Ptr>();
+    bp::register_ptr_to_python<TargetPoseGenerator::Ptr>();
+    bp::register_ptr_to_python<TargetPoseGenerator::ConstPtr>();
+    bp::register_ptr_to_python<TargetPoseGeneratorFactory::Ptr>();
+  }
 }
 }  // namespace reach

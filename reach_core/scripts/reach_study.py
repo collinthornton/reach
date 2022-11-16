@@ -19,7 +19,7 @@ class NewIKSolver(rp.IKSolver):
 
 class NewEvaluator(rp.Evaluator):
     def calculateScore(self, map):
-        score = 0.0
+        score = 4.0
         return score
 
 

@@ -65,7 +65,7 @@ protected:
   Display::ConstPtr display_;
   Logger::Ptr logger_;
 
-  const size_t max_threads_;
+  size_t max_threads_;
 
   const VectorIsometry3d target_poses_;
 
