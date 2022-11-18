@@ -5,8 +5,6 @@ import os
 import shutil
 import yaml
 
-from reach_core.reach_core_python import YAML_CPP_Load
-
 from reach_study import *
 
 def main(results_dir, config_name, config_file, sleep, delete_existing):
@@ -56,19 +54,19 @@ def main(results_dir, config_name, config_file, sleep, delete_existing):
         loader.search_libraries_env = "REACH_PLUGINS"
 
         ik_solver_factory = loader.createIKSolverFactoryInstance(ik_config["name"])
-        ik_solver = ik_solver_factory.create(YAML_CPP_Load(yaml.dump(ik_config)))
+        ik_solver = ik_solver_factory.create(ik_config)
 
         target_pose_factory = loader.createTargetPoseGeneratorFactoryInstance(pose_gen_config["name"])
-        target_pose_generator = target_pose_factory.create(YAML_CPP_Load(yaml.dump(pose_gen_config)))
+        target_pose_generator = target_pose_factory.create(pose_gen_config)
 
         evaluator_factory = loader.createEvaluatorFactoryInstance(eval_config["name"])
-        evaluator = evaluator_factory.create(YAML_CPP_Load(yaml.dump(eval_config)))
+        evaluator = evaluator_factory.create(eval_config)
 
         display_factory = loader.createDisplayFactoryInstance(display_config["name"])
-        display = display_factory.create(YAML_CPP_Load(yaml.dump(display_config)))
+        display = display_factory.create(display_config)
 
         logger_factory = loader.createLoggerFactoryInstance(logger_config["name"])
-        logger = logger_factory.create(YAML_CPP_Load(yaml.dump(logger_config)))
+        logger = logger_factory.create(logger_config)
 
         params = rp.Parameters()
         params.radius = opt_config["radius"]

@@ -25,6 +25,14 @@ namespace YAML
 class Node;
 }
 
+namespace boost
+{
+namespace python
+{
+class dict;
+}
+}  // namespace boost
+
 namespace reach
 {
 /**
@@ -44,6 +52,8 @@ struct Evaluator
    * @return
    */
   virtual double calculateScore(const std::map<std::string, double>& pose) const = 0;
+
+  double calculateScore(const boost::python::dict& pose) const;
 };
 
 struct EvaluatorFactory
@@ -56,6 +66,7 @@ struct EvaluatorFactory
 
   virtual Evaluator::ConstPtr create(const YAML::Node& config) const = 0;
 
+  Evaluator::ConstPtr create(const boost::python::dict& pyyaml_config) const;
   static std::string getSection()
   {
     return "eval";

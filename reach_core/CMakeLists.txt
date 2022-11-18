@@ -32,7 +32,12 @@ add_library(
   src/reach_database.cpp
   src/reach_visualizer.cpp
   src/reach_study.cpp
-  src/reach_study_comparison.cpp)
+  src/reach_study_comparison.cpp
+  src/plugins/display.cpp
+  src/plugins/evaluator.cpp
+  src/plugins/ik_solver.cpp
+  src/plugins/logger.cpp
+  src/plugins/target_pose_generator.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
                                                   "$<INSTALL_INTERFACE:include>")
 target_include_directories(${PROJECT_NAME} PUBLIC ${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
@@ -40,7 +45,10 @@ target_link_libraries(
   ${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
          Boost::serialization
+         Boost::python
+         Boost::numpy
          ${PCL_LIBRARIES}
+         ${PYTHON_LIBRARIES}
          yaml-cpp
          boost_plugin_loader::boost_plugin_loader
          OpenMP::OpenMP_CXX)
@@ -73,7 +81,7 @@ add_library(
   ${PROJECT_NAME}_plugins SHARED
   src/plugins/multiplicative_factory.cpp
   src/plugins/point_cloud_target_pose_generator.cpp
-  src/plugins/logger.cpp
+  src/plugins/progress_logger.cpp
   src/plugins/no_op.cpp)
 target_link_libraries(
   ${PROJECT_NAME}_plugins

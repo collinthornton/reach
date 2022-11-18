@@ -310,11 +310,6 @@ struct LoggerPython : Logger, bp::wrapper<Logger>
   {
     return call_and_handle(&LoggerPython::printFunc, this, "print()", msg);
   }
-
-  std::string name() const
-  {
-    return this->get_override("name")();
-  }
 };
 
 struct LoggerFactoryPython : LoggerFactory, bp::wrapper<LoggerFactory>
@@ -397,13 +392,6 @@ BOOST_PYTHON_MODULE(reach_core_python)
   PyEval_InitThreads();
   bp::numpy::initialize();
 
-  // Wrap Yaml-cpp
-  {
-    YAML::Node (*LoadFromString)(const std::string&) = &YAML::Load;
-    bp::def("YAML_CPP_Load", LoadFromString);
-    bp::class_<YAML::Node>("YAML_Node");
-  }
-
   // Wrap boost_plugin_loader::PluginLoader
   {
     bp::class_<boost::filesystem::path>("Path", bp::init<std::string>());
@@ -419,40 +407,68 @@ BOOST_PYTHON_MODULE(reach_core_python)
 
   // Wrap the IKSolvers
   {
+    std::vector<std::vector<double>> (IKSolver::*solveIKCpp)(
+        const Eigen::Isometry3d&, const std::map<std::string, double>&) const = &IKSolver::solveIK;
+    bp::list (IKSolver::*solveIKPython)(const bp::numpy::ndarray&, const bp::dict&) const = &IKSolver::solveIK;
     bp::class_<IKSolverPython, boost::noncopyable>("IKSolver")
         .def("getJointNames", bp::pure_virtual(&IKSolver::getJointNames))
-        .def("solveIK", bp::pure_virtual(&IKSolver::solveIK));
+        .def("solveIK", bp::pure_virtual(solveIKCpp))
+        .def("solveIK", solveIKPython);
+
+    IKSolver::ConstPtr (IKSolverFactory::*createCpp)(const YAML::Node&) const = &IKSolverFactory::create;
+    IKSolver::ConstPtr (IKSolverFactory::*createPython)(const bp::dict&) const = &IKSolverFactory::create;
     bp::class_<IKSolverFactoryPython, boost::noncopyable>("IKSolverFactory")
-        .def("create", bp::pure_virtual(&IKSolverFactory::create));
+        .def("create", bp::pure_virtual(createCpp))
+        .def("create", createPython);
   }
 
   // Wrap the Evaluators
   {
+    double (Evaluator::*calculateScoreCpp)(const std::map<std::string, double>&) const = &Evaluator::calculateScore;
+    double (Evaluator::*calculateScorePython)(const bp::dict&) const;
     bp::class_<EvaluatorPython, boost::noncopyable>("Evaluator")
-        .def("calculateScore", bp::pure_virtual(&Evaluator::calculateScore));
+        .def("calculateScore", bp::pure_virtual(calculateScoreCpp))
+        .def("calculateScore", calculateScorePython);
+
+    Evaluator::ConstPtr (EvaluatorFactory::*createCpp)(const YAML::Node&) const = &EvaluatorFactory::create;
+    Evaluator::ConstPtr (EvaluatorFactory::*createPython)(const bp::dict&) const = &EvaluatorFactory::create;
     bp::class_<EvaluatorFactoryPython, boost::noncopyable>("EvaluatorFactory")
-        .def("create", bp::pure_virtual(&EvaluatorFactory::create));
+        .def("create", bp::pure_virtual(createCpp))
+        .def("create", createPython);
   }
 
   // Wrap the TargetPoseGenerators
   {
     bp::class_<TargetPoseGeneratorPython, boost::noncopyable>("TargetPoseGenerator")
         .def("generate", bp::pure_virtual(&TargetPoseGenerator::generate));
+
+    TargetPoseGenerator::ConstPtr (TargetPoseGeneratorFactory::*createFromDict)(const bp::dict&) const =
+        &TargetPoseGeneratorFactory::create;
+    TargetPoseGenerator::ConstPtr (TargetPoseGeneratorFactory::*createFromNode)(const YAML::Node&) const =
+        &TargetPoseGeneratorFactory::create;
     bp::class_<TargetPoseGeneratorFactoryPython, boost::noncopyable>("TargetPoseGeneratorFactory")
-        .def("create", bp::pure_virtual(&TargetPoseGeneratorFactory::create));
+        .def("create", bp::pure_virtual(createFromNode))
+        .def("create", createFromDict);
   }
 
   // Wrap the Displays
   {
     bp::class_<ReachDatabase>("ReachDatabase").def("calculateResults", &ReachDatabase::calculateResults);
 
+    void (Display::*updateRobotPoseMap)(const std::map<std::string, double>&) const = &Display::updateRobotPose;
+    void (Display::*updateRobotPoseDict)(const boost::python::dict&) const = &Display::updateRobotPose;
     bp::class_<DisplayPython, boost::noncopyable>("Display")
         .def("showEnvironment", bp::pure_virtual(&Display::showEnvironment))
-        .def("updateRobotPose", bp::pure_virtual(&Display::updateRobotPose))
+        .def("updateRobotPose", bp::pure_virtual(updateRobotPoseMap))
+        .def("updateRobotPose", updateRobotPoseDict)
         .def("showReachNeighborhood", bp::pure_virtual(&Display::showReachNeighborhood))
         .def("showResults", bp::pure_virtual(&Display::showResults));
+
+    Display::ConstPtr (DisplayFactory::*createFromDict)(const bp::dict&) const = &DisplayFactory::create;
+    Display::ConstPtr (DisplayFactory::*createFromNode)(const YAML::Node&) const = &DisplayFactory::create;
     bp::class_<DisplayFactoryPython, boost::noncopyable>("DisplayFactory")
-        .def("create", bp::pure_virtual(&DisplayFactory::create));
+        .def("create", bp::pure_virtual(createFromNode))
+        .def("create", createFromDict);
   }
 
   // Wrap the Loggers
@@ -464,8 +480,12 @@ BOOST_PYTHON_MODULE(reach_core_python)
         .def("printProgress", bp::pure_virtual(&Logger::printProgress))
         .def("printResults", bp::pure_virtual(&Logger::printResults))
         .def("print", bp::pure_virtual(&Logger::print));
+
+    Logger::Ptr (LoggerFactory::*createFromDict)(const bp::dict&) const = &LoggerFactory::create;
+    Logger::Ptr (LoggerFactory::*createFromNode)(const YAML::Node&) const = &LoggerFactory::create;
     bp::class_<LoggerFactoryPython, boost::noncopyable>("LoggerFactory")
-        .def("create", bp::pure_virtual(&LoggerFactory::create));
+        .def("create", bp::pure_virtual(createFromNode))
+        .def("create", createFromDict);
   }
 
   // Wrap the Parameters
