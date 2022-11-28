@@ -15,8 +15,7 @@ TargetPoseGenerator::ConstPtr TargetPoseGeneratorFactory::create(const bp::dict&
   return create(pythonDictToYAML(pyyaml_config));
 }
 
-/**
-bp::list TargetPoseGenerator::generate() const
+bp::list TargetPoseGenerator::generatePython() const
 {
   bp::list output;
   VectorIsometry3d cpp_output = generate();
@@ -34,6 +33,8 @@ bp::list TargetPoseGenerator::generate() const
     }
     output.append(matrix);
   }
+
+  return output;
 }
-**/
+
 }  // namespace reach

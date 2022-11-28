@@ -31,7 +31,7 @@ struct TargetPoseGenerator
   virtual VectorIsometry3d generate() const = 0;
 
   // Todo:: functions can't be overloaded if they differ only by return type
-  // boost::python::list generate() const;
+  boost::python::list generatePython() const;
 };
 
 struct TargetPoseGeneratorFactory

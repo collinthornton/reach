@@ -11,11 +11,13 @@ boost::python::list IKSolver::solveIK(const boost::python::numpy::ndarray& targe
                                       const boost::python::dict& seed) const
 {
   Eigen::Isometry3d cpp_target;
+  double* np_ptr = reinterpret_cast<double*>(target.get_data());
+
   for (int i = 0; i < 4; ++i)
   {
     for (int j = 0; j < 4; ++j)
     {
-      cpp_target.matrix()(i, j) = boost::python::extract<double>(target[i, j]);
+      cpp_target.matrix()(i, j) = *(np_ptr + i * 4 + j);
     }
   }
 

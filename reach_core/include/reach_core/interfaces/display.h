@@ -32,6 +32,7 @@ namespace python
 class dict;
 }  // namespace python
 }  // namespace boost
+
 namespace reach
 {
 struct Display

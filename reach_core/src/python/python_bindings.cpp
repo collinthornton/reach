@@ -214,6 +214,10 @@ struct TargetPoseGeneratorFactoryPython : TargetPoseGeneratorFactory, bp::wrappe
     return call_and_handle(&TargetPoseGeneratorFactoryPython::createFunc, this, "TargetPoseGeneratorFactory::create",
                            config);
   }
+  TargetPoseGenerator::ConstPtr create(const bp::dict& pyyaml_config) const
+  {
+    return create(pythonDictToYAML(pyyaml_config));
+  }
 };
 
 struct DisplayPython : Display, bp::wrapper<Display>
@@ -439,8 +443,13 @@ BOOST_PYTHON_MODULE(reach_core_python)
 
   // Wrap the TargetPoseGenerators
   {
+    // Todo: Make TargetPoseGenerator::generate private or otherwise restrict acces in Python
+    //    - Still needs to be defined for polymorphism to pan out
+    //    - There's never a valid case for Python scripts to use VectorIsometry3d
+
     bp::class_<TargetPoseGeneratorPython, boost::noncopyable>("TargetPoseGenerator")
-        .def("generate", bp::pure_virtual(&TargetPoseGenerator::generate));
+        .def("generate", bp::pure_virtual(&TargetPoseGenerator::generate))
+        .def("generatePython", &TargetPoseGenerator::generatePython);
 
     TargetPoseGenerator::ConstPtr (TargetPoseGeneratorFactory::*createFromDict)(const bp::dict&) const =
         &TargetPoseGeneratorFactory::create;
